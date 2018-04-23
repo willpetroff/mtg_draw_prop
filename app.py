@@ -1,41 +1,52 @@
-class Deck():
+from deck import Deck
+from flask import Flask, request, flash, url_for, redirect, render_template, \
+    abort, send_from_directory, g, jsonify, session
 
-    cards_in_deck = {}
-    cards = 0
-    cards_played = {}
 
-    def __init__(self, path):
-        with open(path, 'r') as deck_list:
-            for line in deck_list:
-                line = line.replace('\n', '')
-                if line:
-                    count, card = line.split(' ', maxsplit=1)
-                    self.cards_in_deck[card] = int(count)
-                    self.cards += int(count)
+app = Flask(__name__)
+app.config.from_pyfile('flaskapp.cfg')
 
-    def card_drawn(self, card):
-        for key in self.cards_in_deck:
-            # print(key.lower())
-            # print(card.lower())
-            if card.lower() in key.lower():
-                if key in self.cards_played.keys():
-                    self.cards_played[key] += 1
-                else:
-                    self.cards_played[key] = 1
-                self.cards_in_deck[key] -= 1
-                self.cards -= 1
-            else:
-                pass
 
-    def cards_draw_chance(self):
-        print('\n')
-        chance_list = []
-        for key in self.cards_in_deck:
-            if self.cards > 0:
-                card_draw_pct = round(self.cards_in_deck[key] / self.cards, 4) * 100
-                chance_str = "{} {} in deck --> {:.2f}%".format(self.cards_in_deck[key], key, card_draw_pct)
-                chance_list.append((chance_str, card_draw_pct))
-        chance_list = [item[0] for item in sorted(chance_list, key=lambda x: x[1], reverse=True)]
-        for item in chance_list:
-            print(item)
+@app.route('/', methods=["GET", "POST"])
+def index():
+    deck = Deck(
+        cards_in_deck=session.get('cards_in_deck', {}),
+        card_count=session.get('card_count', 0),
+        cards_played=session.get('cards_played', {}),
+        cards_prob=session.get('cards_prob', {})
+    )
+    deck_path = session.get('path', None)
+    if request.form:
+        deck_path = request.form.get('deck_path')
+        session['path'] = deck_path
+        deck = Deck(deck_path)
+        deck.set_initial_probs()
+        session['cards_in_deck'] = deck.cards_in_deck
+        session['cards_played'] = deck.cards_played
+        session['cards_prob'] = deck.cards_prob
+        session['card_count'] = deck.card_count
+    return render_template('main.html', deck=deck, deck_path=deck_path)
 
+
+@app.route('/api/draw/<string:card_name>', methods=["POST"])
+def api_draw_card(card_name):
+    deck = Deck(
+        cards_in_deck=session.get('cards_in_deck', {}),
+        card_count=session.get('card_count', 0),
+        cards_played=session.get('cards_played', {}),
+        cards_prob=session.get('cards_prob', {})
+    )
+    card_exists = deck.card_drawn(card_name)
+    session['cards_in_deck'] = deck.cards_in_deck
+    session['cards_played'] = deck.cards_played
+    session['cards_prob'] = deck.cards_prob
+    session['card_count'] = deck.card_count
+    if not card_exists:
+        return jsonify(success=False, err="Card {} is not in this deck.").format(card_name)
+    return jsonify(success=True)
+
+
+if __name__ == "__main__":
+    global deck
+    # new_deck = Deck("C:\\Users\\willp\\OneDrive\\mtg-a decklist\\killallthethings.txt")
+    app.run(port=3000)
